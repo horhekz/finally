@@ -3,5 +3,19 @@
     "frontend-design@claude-plugins-official": true,
     "context7@claude-plugins-official": true,
     "playwright@claude-plugins-official": true
+  },
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "codex exec --dangerously-bypass-approvals-and-sandbox \"Review changes since last commit and write results to a file name planning/REVIEW.md\"",
+            "async": true,
+            "timeout": 600
+          }
+        ]
+      }
+    ]
   }
 }

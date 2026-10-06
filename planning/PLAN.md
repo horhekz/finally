@@ -454,3 +454,57 @@ The container is designed to deploy to AWS App Runner, Render, or any container 
 - Portfolio visualization: heatmap renders with correct colors, P&L chart has data points
 - AI chat (mocked): send a message, receive a response, trade execution appears inline
 - SSE resilience: disconnect and verify reconnection
+
+---
+
+## 13. Review: Questions, Clarifications & Simplifications
+
+*Added by doc review on 2026-10-05. Each item names the section it affects. Items marked **[Decision needed]** should be settled before the relevant agent starts work.*
+
+### 13.1 Gaps & Inconsistencies
+
+1. **Removing a watched ticker you still hold breaks valuation** (§6, §8). The completed market data code (`remove_ticker()` in `simulator.py` and `massive_client.py`) also evicts the ticker from `PriceCache`. If the user removes AAPL from the watchlist while holding AAPL, the portfolio has no price for it. **[Decision needed]** Pick one:
+   - (a) The set of tracked tickers = watchlist ∪ held positions. The backend only calls `source.remove_ticker()` when a ticker is in neither. *(Recommended: no change to market code, one helper in the backend.)*
+   - (b) Reject removing a ticker from the watchlist while it is held (409).
+   - (c) Buying a ticker automatically adds it to the watchlist.
+2. **Trading a ticker that isn't tracked** (§8, §9). `POST /api/portfolio/trade` for `PYPL` when PYPL isn't tracked means there's no price in the cache. Should the trade be rejected, or should the ticker be added to tracking first? If it's added, the first price may take one tick (simulator) or up to 15s (Massive). Recommend: auto-add, then reject with a clear "price not yet available, retry" error if the cache is still empty.
+3. **What counts as a valid ticker** (§8). With the simulator any string "works". It will generate a GBM price for `ASDFG` from a default seed. Should the backend validate format (e.g., uppercase, `^[A-Z.]{1,10}$`)? Under Massive, should unknown tickers be rejected? Recommend: normalise to uppercase, check the format, and accept any well-formed symbol in simulator mode.
+4. **"Daily change %" has no reference price** (§10). The cache stores only `price` and `previous_price` (the last tick). There's no open or prior close. Options: (a) change since page load, using the first price seen; (b) the backend keeps a per-ticker `session_open` (e.g., the seed price) and sends it in the SSE payload. Recommend (b): one extra field, and it stays consistent across reloads.
+5. **SSE payload shape isn't specified in the plan** (§6). The frontend agent needs the exact JSON. The implemented `PriceUpdate` has `ticker, price, previous_price, timestamp, change, direction`. Is it one event per ticker or one event holding all tickers? Please copy the actual wire format from `backend/app/market/stream.py` into this doc as the contract.
+6. **REST response shapes are undefined** (§8). Only request bodies are given. Define the JSON for `GET /api/portfolio`, `GET /api/portfolio/history`, `GET /api/watchlist`, and `POST /api/chat`, plus a common error format (e.g., `{"error": "..."}` with 400/404/409). Without this, the frontend and backend agents will guess differently.
+7. **Chat response: requested vs. executed actions** (§9). The LLM schema lists *requested* trades, but the API should return *executed* results, including failures. Suggest `/api/chat` return `{message, actions: {trades: [{ticker, side, quantity, price?, status: "executed"|"failed", error?}], watchlist_changes: [...]}}`, and store this same object in `chat_messages.actions`.
+8. **The LLM can't react to its own trade failures in the same turn** (§9). The doc says errors are "included in the chat response so the LLM can inform the user". With a single LLM call, the message is written before execution happens. Either (a) the UI shows the failure next to the LLM's message (simple; recommended), or (b) make a second LLM call after execution (more latency). Either way, the next turn's history should include the actions so the LLM knows what actually happened.
+9. **`users_profile` has no `user_id` column** (§7). The doc says all tables include `user_id`, but this one uses `id`. That's fine, but say so explicitly.
+10. **Snapshot growth and the first-launch chart** (§7). Snapshots every 30s add up to ~2,900 rows/day forever. That's harmless for SQLite, but `GET /api/portfolio/history` should cap or downsample (e.g., the last 24h or N points). Should a snapshot be recorded when there are no positions (value = cash)? Recommend yes, plus one at startup, so the P&L chart isn't empty on first launch.
+11. **Quantity rules** (§2, §7). The schema supports fractional shares. Should the trade bar accept decimals? Set a minimum and a precision (e.g., >0, up to 4 decimals), and reject quantity ≤ 0 with 400.
+12. **Position math edge cases** (§7). State explicitly: the average cost is a weighted average on buys and stays the same on sells. A sell that brings the quantity to 0 deletes the row. Treat |qty| < 1e-9 as zero to absorb floating-point leftovers. Update the position, the cash, and the trade log in **one SQLite transaction**.
+13. **Chat history window and reload** (§9). How many messages count as "recent conversation history"? Recommend the last 20. Also, add `GET /api/chat/history`. Without it, the chat panel is empty after a page reload even though the DB has the history.
+14. **No-price-yet state** (§6, §10). Under Massive's free tier, a newly added ticker may have no price for up to 15s. The frontend should render a "—" placeholder, and the backend's valuation should handle missing prices (e.g., fall back to `avg_cost`).
+
+### 13.2 Questions for the Product Owner
+
+1. Should the AI ever trade or remove watchlist items without an explicit user request? "Manage the watchlist proactively" is clear for adds, but proactive *trades* should probably be off-limits. Please confirm.
+2. Is there a reset feature ("start over with $10k")? It's useful for demos and E2E test isolation. If it isn't exposed in the UI, perhaps provide `POST /api/reset` only in test mode.
+3. What exactly should `LLM_MOCK` return? E2E tests need known triggers. For example, a message containing "buy" returns a canned trade of 1 AAPL, and anything else returns a fixed greeting. Define 2–3 deterministic mock responses here so the backend and test agents agree.
+4. Should the app start if `OPENROUTER_API_KEY` is missing? Recommend: yes. Chat returns a friendly error, and everything else works.
+
+### 13.3 Opportunities to Simplify
+
+1. **Drop the root `docker-compose.yml`** (§4). The start/stop scripts already wrap `docker run`, so it's one less thing to keep in sync. Keep only `test/docker-compose.test.yml`.
+2. **Pick one charting approach** (§10). "Lightweight Charts or Recharts" invites dithering. Recommend **Lightweight Charts** for the main price chart and the P&L chart. Draw sparklines as tiny inline SVG polylines with no library. Build the treemap with a small hand-rolled squarified layout, or with Recharts' `Treemap` only if that proves easier.
+3. **One snapshot helper** (§7). A single `record_snapshot()` called from both the 30s loop and the trade path, so there aren't two implementations.
+4. **Rename `start_mac.sh` / `stop_mac.sh`** to `start.sh` / `stop.sh` (§4, §11). They serve Linux too.
+5. **Decide whether `GET /api/watchlist` returns prices** (§8). The frontend gets prices from SSE anyway. Recommend returning tickers plus the latest cached price (nullable) for the first paint, and documenting that SSE is the source of truth.
+6. **Trim the Massive detail from §6.** It's implemented and documented in `MARKET_DATA_SUMMARY.md`. Replace it with a short pointer to reduce duplication and drift.
+7. **E2E: reconsider "SSE resilience"** (§12). Disconnect/reconnect is flaky to automate against a single container. Consider covering the connection-status indicator logic with a frontend unit test (mock `EventSource`) and leaving reconnection as a manual check.
+8. **Fix the chat loop to one LLM call per message** (§9). This is already implied ("no streaming"). Stating "exactly one LLM call per user message, no tool-calling loop" keeps the backend simple and predictable.
+
+### 13.4 Minor Clarifications
+
+- §3/§6: Confirm the market data source is started in FastAPI's `lifespan` handler, with the initial tickers = watchlist ∪ positions loaded from the DB.
+- §5: In Docker, `.env` comes via `--env-file`. For local dev (`uv run`), should the backend load the root `.env` with `python-dotenv`? Say which.
+- §7: All timestamps should be UTC ISO-8601. Say so explicitly.
+- §9: Specify LLM failure handling (timeout, invalid JSON despite structured output). Recommend returning a friendly assistant message with empty actions, storing it, and never returning a 500.
+- §10: Say whether the chat panel starts open or collapsed, and how the layout behaves at the tablet breakpoint.
+- §11: The static export needs FastAPI to serve `index.html` at `/` and the `/_next/*` assets. Register API routes **before** the static mount so `/api/*` isn't swallowed.
+- §11: The Docker volume command mounts `finally-data:/app/db`. Confirm that the backend's DB path resolves to `/app/db/finally.db` in the container and to `<repo>/db/finally.db` locally, e.g., via a `DB_PATH` env var with a sensible default.

@@ -205,3 +205,7 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# Claude review hook runtime state
+.claude/hooks/.last-review-hash
+.claude/hooks/review.log
