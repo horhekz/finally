@@ -7,7 +7,7 @@ The implementation reference for FinAlly's market data layer: one unified Python
 | **Scope** | `backend/app/market/` (10 modules) and `backend/tests/market/` |
 | **Supersedes** | `planning/archive/MARKET_DATA_DESIGN.md` (the original design, written before the review) |
 | **Builds on** | `MARKET_INTERFACE.md` (interface decisions), `MARKET_SIMULATOR.md` (simulator math), `MASSIVE_API.md` (API research), `PLAN.md` §6 and §13 |
-| **Status** | Design. Every code block in §4–§13 was run as a working package against `massive` 2.2.0 on Python 3.13: 84 tests passed (the existing model, cache, simulator and factory tests, plus every test in §14), `ruff` was clean, and a live SSE smoke test under uvicorn passed. §15 lists what has to change in the current code. |
+| **Status** | Design. The module code in §4–§12 was run as a working package against `massive` 2.2.0 on Python 3.13: 84 tests passed (the existing model, cache, simulator and factory tests, plus every test in §14), `ruff` was clean, and a live SSE smoke test under uvicorn passed. §15 lists what has to change in the current code. |
 
 ---
 
