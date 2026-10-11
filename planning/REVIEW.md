@@ -1,18 +1,17 @@
-﻿# Review: changes in `b995d19` (`HEAD^..HEAD`)
+# Code review
 
-Reviewed the five added files: the independent-reviewer plugin metadata and Stop hook, plus the three market-planning documents. No application code changed.
+Compared `market-data-migration` with `origin/main` at `341bbac` (six commits, through `0104d60`). The checked out `main` branch does not contain this implementation; it has a separate local merge commit. Review was static; tests were not rerun.
 
 ## Findings
 
-### [P1] Stop hook runs Codex with all safeguards bypassed
+### [P2] Validate simulator event probability bounds
 
-[`independent-reviewer/hooks/hooks.json:8`](../independent-reviewer/hooks/hooks.json) launches `codex exec --dangerously-bypass-approvals-and-sandbox` automatically on every Claude `Stop` event. This grants the spawned process permission to make unrestricted workspace changes and run commands without an approval step. A routine end-of-session event can therefore execute whatever instructions the reviewer infers from repository content, including untrusted or malicious instructions in files. Remove the bypass flag and run the reviewer with the normal sandbox/approval policy; keep any broader permissions explicit and scoped.
+`SIM_EVENT_PROBABILITY` is parsed as any floating-point value and passed directly to the simulator. Values above 1 make every ticker jump on every tick, while negative values silently disable events; `nan` is also accepted. This makes a syntactically valid but out-of-range environment setting change simulation behavior dramatically rather than falling back to the documented default. Reject non-finite values and values outside `[0, 1]` in `factory.py`.
 
-### [P2] Async Stop hook can start overlapping reviews
+`backend/app/market/factory.py:40`
 
-[`independent-reviewer/hooks/hooks.json:9`](../independent-reviewer/hooks/hooks.json) sets `async: true`, and the hook has no lock, deduplication, or completion check. Repeated Stop events can leave multiple Codex processes reviewing the same diff and writing `planning/REVIEW.md` concurrently. This can waste resources and produce a truncated or nondeterministic report. Serialize/deduplicate runs or use a synchronous hook with an appropriate timeout.
+## Scope notes
 
-## Review notes
-
-- `git diff --check HEAD^ HEAD` reported no whitespace errors.
-- I did not run tests; the commit adds planning documents and hook metadata, not application code.
+- Reviewed the market data source, cache, ticker service, stream, simulator, Massive client, tests, and related configuration/docs changes.
+- The reported test and live-check results from the provided session transcript were not independently verified.
+- No other actionable defects were identified in the reviewed diff.
