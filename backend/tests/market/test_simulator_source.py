@@ -5,7 +5,8 @@ import asyncio
 import pytest
 
 from app.market.cache import PriceCache
-from app.market.simulator import SimulatorDataSource
+from app.market.simulator import TRADING_SECONDS_PER_YEAR, SimulatorDataSource
+from app.market.tickers import InvalidTickerError
 
 
 @pytest.mark.asyncio
@@ -136,3 +137,78 @@ class TestSimulatorDataSource:
         # Just verify it starts and stops cleanly
         await asyncio.sleep(0.2)
         await source.stop()
+
+
+async def test_simulator_source_contract():
+    """Design doc §8.5 guarantees 2-5 and 8 on the async wrapper."""
+    cache = PriceCache()
+    src = SimulatorDataSource(cache, update_interval=0.05, seed=7)
+    await src.start(["aapl", "PYPL", "AAPL"], initial_prices={"pypl": 70.0})
+    assert src.get_tickers() == ["AAPL", "PYPL"]  # normalised + de-duplicated
+    assert cache.get("AAPL").price == 190.0
+    assert cache.get("AAPL").reference_price == 190.0
+    assert cache.get_price("PYPL") == 70.0  # initial_prices hint honoured
+    await src.add_ticker("nflx")
+    assert cache.get_price("NFLX") == 600.0  # priced before add_ticker returns
+    assert cache.get("NFLX").reference_price == 600.0
+    await src.remove_ticker("AAPL")
+    assert "AAPL" not in cache and "AAPL" not in src.get_tickers()
+    await src.stop()
+    v = cache.version
+    await asyncio.sleep(0.15)
+    assert cache.version == v  # no writes after stop
+    await src.stop()  # idempotent
+
+
+async def test_add_ticker_twice_does_not_reset_price():
+    cache = PriceCache()
+    src = SimulatorDataSource(cache, update_interval=0.01, seed=3)
+    await src.start(["AAPL"])
+    await asyncio.sleep(0.1)
+    await src.stop()
+    moved = cache.get_price("AAPL")
+    await src.add_ticker("AAPL")
+    assert cache.get_price("AAPL") == moved
+
+
+async def test_reference_price_survives_ticks():
+    cache = PriceCache()
+    src = SimulatorDataSource(cache, update_interval=0.01, seed=3)
+    await src.start(["AAPL"])
+    await asyncio.sleep(0.1)
+    await src.stop()
+    update = cache.get("AAPL")
+    assert update.reference_price == 190.0
+    assert update.day_change == round(update.price - 190.0, 4)
+
+
+async def test_invalid_ticker_rejected():
+    cache = PriceCache()
+    src = SimulatorDataSource(cache, update_interval=0.1)
+    with pytest.raises(InvalidTickerError):
+        await src.start(["AAPL", "$$$"])
+    src2 = SimulatorDataSource(cache, update_interval=0.1)
+    await src2.start(["AAPL"])
+    try:
+        with pytest.raises(InvalidTickerError):
+            await src2.add_ticker("1ABC")
+    finally:
+        await src2.stop()
+
+
+async def test_seeded_sources_produce_identical_paths():
+    paths = []
+    for _ in range(2):
+        cache = PriceCache()
+        src = SimulatorDataSource(cache, update_interval=0.5, seed=11)
+        await src.start(["AAPL", "ZZZZ"])
+        await src.stop()
+        paths.append((cache.get_price("ZZZZ"), [src._sim.step() for _ in range(10)]))
+    assert paths[0] == paths[1]
+
+
+async def test_dt_derived_from_update_interval():
+    src = SimulatorDataSource(PriceCache(), update_interval=1.0)
+    await src.start(["AAPL"])
+    await src.stop()
+    assert src._sim._dt == 1.0 / TRADING_SECONDS_PER_YEAR

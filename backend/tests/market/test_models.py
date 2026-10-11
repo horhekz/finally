@@ -75,3 +75,37 @@ class TestPriceUpdate:
 
         with pytest.raises(AttributeError):
             update.price = 200.00  # Should raise error
+
+
+class TestReferencePrice:
+    """day_change / day_change_percent versus reference_price (design doc §4)."""
+
+    def test_positional_constructor_still_works(self):
+        update = PriceUpdate("AAPL", 190.5, 190.0, 1.0)
+        assert update.reference_price is None
+
+    def test_day_change_with_reference(self):
+        update = PriceUpdate("AAPL", 191.9, 191.0, 1.0, reference_price=190.0)
+        assert update.day_change == 1.9
+        assert update.day_change_percent == 1.0
+
+    def test_day_change_without_reference(self):
+        update = PriceUpdate("AAPL", 191.9, 191.0, 1.0)
+        assert update.day_change is None
+        assert update.day_change_percent is None
+
+    def test_zero_reference_is_treated_as_unknown(self):
+        update = PriceUpdate("AAPL", 191.9, 191.0, 1.0, reference_price=0.0)
+        assert update.day_change is None
+        assert update.day_change_percent is None
+
+    def test_to_dict_has_exact_wire_keys(self):
+        update = PriceUpdate("AAPL", 190.42, 190.38, 1.0, reference_price=190.0)
+        result = update.to_dict()
+        assert list(result) == [
+            "ticker", "price", "previous_price", "timestamp", "change", "change_percent",
+            "direction", "reference_price", "day_change", "day_change_percent",
+        ]
+        assert result["reference_price"] == 190.0
+        assert result["day_change"] == 0.42
+        assert result["day_change_percent"] == 0.2211
