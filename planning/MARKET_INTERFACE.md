@@ -495,17 +495,19 @@ await request.app.state.market.sync(set(db.watchlist()), set(db.held()))
 
 ## 11. 🔧 Change Checklist vs. the Current Code
 
-✅ = done (2026-10-06). #2 is done except the `reference_price` part, which waits on #4. EOD mode currently uses the latest bar's close only.
+> **Correction (2026-10-11):** the ✅ marks added here on 2026-10-06 for #1–#3 and #10 were **wrong**. The code on `main` still read `last_trade.timestamp / 1000.0` and `test_massive.py` still used `MagicMock` snapshots. All ten items are now actually done, on branch `market-data-migration`, following `MARKET_DATA_DESIGN.md` §15 (which supersedes this checklist).
+
+✅ = done (2026-10-11, verified by the rewritten tests). EOD mode uses the latest bar's close, with the previous trading day's close (else the bar's open) as `reference_price`.
 
 | # | File | Change | Why |
 |---|---|---|---|
-| 1 | ✅ `massive_client.py` | `last_trade.sip_timestamp / 1e9` (or `updated / 1e9`) instead of `last_trade.timestamp / 1000` | Fixes `AttributeError` on every real snapshot |
+| 1 | ✅ `massive_client.py` | `last_trade.sip_timestamp` (ns) → `updated` (ns) → `min.timestamp` (ms), converted by magnitude in `to_epoch_seconds`, instead of `last_trade.timestamp / 1000` | Fixes `AttributeError` on every real snapshot |
 | 2 | ✅ `massive_client.py` | Price fallback chain, with `prev_day.close` as the reference | Pre-market gaps; daily change % |
 | 3 | ✅ `massive_client.py` | 403 → EOD mode using `get_grouped_daily_aggs` | Free-tier keys work at all |
-| 4 | `models.py`, `cache.py` | Add `reference_price` and `day_change_percent` | PLAN §13.1 item 4 |
-| 5 | `simulator.py` | Pass the seed price as `reference_price`; normalise tickers | Consistent daily change; uppercase |
-| 6 | `tickers.py` (new) | `normalize_ticker` + `InvalidTicker` | PLAN §13.1 item 3 |
-| 7 | `service.py` (new) | `MarketDataService` (tracked = watchlist ∪ held, `ensure_price`) | PLAN §13.1 items 1–2 |
-| 8 | `factory.py` | Read `MASSIVE_POLL_INTERVAL` | Paid tiers can poll faster |
-| 9 | `stream.py` | Create the `APIRouter` **inside** `create_stream_router` (it's module-level today) | Calling the factory twice, e.g. in tests, registers the route twice |
+| 4 | ✅ `models.py`, `cache.py` | Add `reference_price`, `day_change` and `day_change_percent` | PLAN §13.1 item 4 |
+| 5 | ✅ `simulator.py` | Pass the start price as `reference_price`; normalise tickers | Consistent daily change; uppercase |
+| 6 | ✅ `tickers.py` (new) | `normalize_ticker` + `InvalidTickerError` | PLAN §13.1 item 3 |
+| 7 | ✅ `service.py` (new) | `MarketDataService` (tracked = watchlist ∪ held, `ensure_price`) | PLAN §13.1 items 1–2 |
+| 8 | ✅ `factory.py` | Read `MASSIVE_POLL_INTERVAL` (plus `SIM_EVENT_PROBABILITY`, `SIM_SEED`) | Paid tiers can poll faster |
+| 9 | ✅ `stream.py` | Create the `APIRouter` **inside** `create_stream_router` | Calling the factory twice, e.g. in tests, registered the route twice |
 | 10 | ✅ `tests/market/test_massive.py` | Replace `MagicMock` snapshots with `TickerSnapshot.from_dict` | It's the reason bug #1 went unnoticed |
