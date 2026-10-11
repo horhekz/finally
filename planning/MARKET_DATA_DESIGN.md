@@ -1783,6 +1783,8 @@ curl -N localhost:8000/api/stream/prices                      # against the runn
 
 ## 15. Migration Checklist vs. Current Code
 
+> **Status (2026-10-11):** all 12 items implemented on branch `market-data-migration` (156 tests passing, `ruff` clean, live SSE smoke test under uvicorn passing). Deviations from the code above: `tzdata` added as a runtime dependency (`zoneinfo` has no system tz database on Windows), `massive>=2.2.0` pinned, `GBMSimulator.TRADING_SECONDS_PER_YEAR` kept as a class alias of the module constant, and `create_market_data_source` logs a warning for a non-integer `SIM_SEED`. See `MARKET_DATA_SUMMARY.md`.
+
 The code on `main` today matches `planning/archive/MARKET_DATA_DESIGN.md`. ⚠️ `MARKET_INTERFACE.md` §11 and `MASSIVE_API.md` §9 mark the Massive fixes as done (✅), but `backend/app/market/massive_client.py` **still reads `snap.last_trade.timestamp / 1000.0`**, and `test_massive.py` still uses `MagicMock` snapshots. Treat those items as **not done**.
 
 | # | File | Change | Section |

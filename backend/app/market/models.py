@@ -11,33 +11,48 @@ class PriceUpdate:
     """Immutable snapshot of a single ticker's price at a point in time."""
 
     ticker: str
-    price: float
-    previous_price: float
+    price: float  # latest price, rounded to cents
+    previous_price: float  # price at the previous update (tick-to-tick)
     timestamp: float = field(default_factory=time.time)  # Unix seconds
+    reference_price: float | None = None  # "day open": prev close (Massive) / seed (simulator)
 
     @property
     def change(self) -> float:
-        """Absolute price change from previous update."""
+        """Absolute price change from the previous update."""
         return round(self.price - self.previous_price, 4)
 
     @property
     def change_percent(self) -> float:
-        """Percentage change from previous update."""
+        """Percentage change from the previous update."""
         if self.previous_price == 0:
             return 0.0
         return round((self.price - self.previous_price) / self.previous_price * 100, 4)
 
     @property
     def direction(self) -> str:
-        """'up', 'down', or 'flat'."""
+        """'up', 'down', or 'flat' — drives the frontend flash animation."""
         if self.price > self.previous_price:
             return "up"
-        elif self.price < self.previous_price:
+        if self.price < self.previous_price:
             return "down"
         return "flat"
 
+    @property
+    def day_change(self) -> float | None:
+        """Absolute change versus the reference price, or None if unknown."""
+        if not self.reference_price:
+            return None
+        return round(self.price - self.reference_price, 4)
+
+    @property
+    def day_change_percent(self) -> float | None:
+        """Percentage change versus the reference price, or None if unknown."""
+        if not self.reference_price:
+            return None
+        return round((self.price - self.reference_price) / self.reference_price * 100, 4)
+
     def to_dict(self) -> dict:
-        """Serialize for JSON / SSE transmission."""
+        """Serialize for JSON / SSE transmission. This IS the wire format."""
         return {
             "ticker": self.ticker,
             "price": self.price,
@@ -46,4 +61,7 @@ class PriceUpdate:
             "change": self.change,
             "change_percent": self.change_percent,
             "direction": self.direction,
+            "reference_price": self.reference_price,
+            "day_change": self.day_change,
+            "day_change_percent": self.day_change_percent,
         }

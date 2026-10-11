@@ -101,3 +101,46 @@ class TestPriceCache:
         cache = PriceCache()
         update = cache.update("AAPL", 190.12345)
         assert update.price == 190.12
+
+    def test_zero_timestamp_is_kept(self):
+        """A timestamp of 0 must not be replaced by time.time()."""
+        cache = PriceCache()
+        assert cache.update("AAPL", 190.0, timestamp=0).timestamp == 0
+
+    def test_first_price_becomes_reference(self):
+        cache = PriceCache()
+        assert cache.update("AAPL", 190.0).reference_price == 190.0
+
+    def test_reference_is_sticky(self):
+        cache = PriceCache()
+        cache.update("AAPL", 190.0, reference_price=190.0)
+        update = cache.update("AAPL", 191.9)
+        assert update.reference_price == 190.0
+        assert update.day_change_percent == 1.0
+
+    def test_explicit_reference_replaces_stored_one(self):
+        """Massive passes prev_day.close every poll; a new trading day moves it."""
+        cache = PriceCache()
+        cache.update("AAPL", 190.0, reference_price=189.0)
+        assert cache.update("AAPL", 192.0, reference_price=191.0).reference_price == 191.0
+
+    def test_reference_is_rounded(self):
+        cache = PriceCache()
+        assert cache.update("AAPL", 190.0, reference_price=189.9876).reference_price == 189.99
+
+    def test_remove_bumps_version_only_when_present(self):
+        cache = PriceCache()
+        cache.update("AAPL", 190.0)
+        v = cache.version
+        cache.remove("AAPL")
+        assert cache.version == v + 1
+        cache.remove("AAPL")  # unknown → no bump
+        assert cache.version == v + 1
+
+    def test_previous_price_is_rounded_value(self):
+        """Sub-cent moves show as flat (no flash)."""
+        cache = PriceCache()
+        cache.update("AAPL", 190.001)
+        update = cache.update("AAPL", 190.004)
+        assert update.previous_price == 190.0
+        assert update.direction == "flat"

@@ -371,7 +371,9 @@ Reference prices for "daily change %":
 
 ## 9. Findings Against the Current Code (`backend/app/market/massive_client.py`)
 
-> **Status (2026-10-06):** Items 1–3 are **fixed** in `massive_client.py`, and the tests now build real `TickerSnapshot` / `GroupedDailyAgg` models. Item 4 (reference price) is still open; see `MARKET_INTERFACE.md` §11.
+> **Status (2026-10-11):** All four items are now **fixed** (branch `market-data-migration`, per `MARKET_DATA_DESIGN.md` §9 and §15), and `test_massive.py` builds real `TickerSnapshot` / `GroupedDailyAgg` models.
+>
+> **Correction:** the earlier status note (2026-10-06) said items 1–3 were fixed. That was **wrong**: `massive_client.py` on `main` still read `snap.last_trade.timestamp / 1000.0`, and `test_massive.py` still used `MagicMock` snapshots.
 
 1. **Wrong timestamp attribute and unit.** The code reads `snap.last_trade.timestamp / 1000.0`. The `LastTrade` model has **no `timestamp` attribute**. It's `sip_timestamp`, in **nanoseconds**. With the real client this raises `AttributeError` for every ticker, so every snapshot gets skipped and the cache never fills. The unit tests miss this because they build `MagicMock` snapshots, which accept any attribute. **Fix:** `ts = snap.last_trade.sip_timestamp / 1e9`, or use `snap.updated / 1e9`, and fall back to `time.time()`. Tests should build real `TickerSnapshot.from_dict({...})` objects from the JSON sample in §4.1.
 2. **A free (Basic) key gets 403 on the snapshot endpoint.** The code logs the error every 15 s and never produces a price. **Fix:** detect `NOT_AUTHORIZED` and fall back to the grouped daily EOD mode (see `MARKET_INTERFACE.md` §5).

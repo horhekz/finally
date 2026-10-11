@@ -8,50 +8,51 @@ from abc import ABC, abstractmethod
 class MarketDataSource(ABC):
     """Contract for market data providers.
 
-    Implementations push price updates into a shared PriceCache on their own
-    schedule. Downstream code never calls the data source directly for prices —
-    it reads from the cache.
+    Implementations push prices into a shared PriceCache on their own schedule.
+    Downstream code never asks the source for a price — it reads the cache.
+
+    Every implementation guarantees:
+      * start() returns with the cache already holding a price for every
+        starting ticker it can price (simulator: always; Massive: whatever the
+        first poll returned).
+      * Ticker arguments are normalised (normalize_ticker) on the way in.
+      * add_ticker() on a tracked ticker and remove_ticker() on an unknown one
+        are no-ops.
+      * remove_ticker() also evicts the ticker from the cache.
+      * Errors inside the background task are logged, never raised; the last
+        good price stays in the cache.
+      * stop() is idempotent; after it returns the source never writes again.
 
     Lifecycle:
         source = create_market_data_source(cache)
-        await source.start(["AAPL", "GOOGL", ...])
-        # ... app runs ...
-        await source.add_ticker("TSLA")
-        await source.remove_ticker("GOOGL")
-        # ... app shutting down ...
+        await source.start(["AAPL", "MSFT"], initial_prices={"PYPL": 71.2})
+        await source.add_ticker("tsla")      # -> "TSLA"
+        await source.remove_ticker("MSFT")   # also evicted from the cache
         await source.stop()
     """
 
     @abstractmethod
-    async def start(self, tickers: list[str]) -> None:
-        """Begin producing price updates for the given tickers.
+    async def start(
+        self, tickers: list[str], initial_prices: dict[str, float] | None = None
+    ) -> None:
+        """Begin producing prices. Call exactly once.
 
-        Starts a background task that periodically writes to the PriceCache.
-        Must be called exactly once. Calling start() twice is undefined behavior.
+        initial_prices is a hint for sources that invent prices (the simulator
+        starts those tickers there instead of at a seed). Real sources ignore it.
         """
 
     @abstractmethod
     async def stop(self) -> None:
-        """Stop the background task and release resources.
-
-        Safe to call multiple times. After stop(), the source will not write
-        to the cache again.
-        """
+        """Cancel the background task. Safe to call more than once."""
 
     @abstractmethod
     async def add_ticker(self, ticker: str) -> None:
-        """Add a ticker to the active set. No-op if already present.
-
-        The next update cycle will include this ticker.
-        """
+        """Start tracking a ticker. No-op if already tracked."""
 
     @abstractmethod
     async def remove_ticker(self, ticker: str) -> None:
-        """Remove a ticker from the active set. No-op if not present.
-
-        Also removes the ticker from the PriceCache.
-        """
+        """Stop tracking a ticker and evict it from the cache. No-op if unknown."""
 
     @abstractmethod
     def get_tickers(self) -> list[str]:
-        """Return the current list of actively tracked tickers."""
+        """Currently tracked tickers."""

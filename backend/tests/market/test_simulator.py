@@ -1,6 +1,8 @@
 """Tests for GBMSimulator."""
 
-from app.market.seed_prices import SEED_PRICES
+import numpy as np
+
+from app.market.seed_prices import DEFAULT_PARAMS, SEED_PRICES
 from app.market.simulator import GBMSimulator
 
 
@@ -126,6 +128,96 @@ class TestGBMSimulator:
         result = sim.step()
         price_str = str(result["AAPL"])
         # Check that we have at most 2 decimal places
-        if '.' in price_str:
-            decimal_part = price_str.split('.')[1]
+        if "." in price_str:
+            decimal_part = price_str.split(".")[1]
             assert len(decimal_part) <= 2
+
+
+class TestGBMSimulatorGuarantees:
+    """Behaviour guarantees from design doc §8.5."""
+
+    def test_seeded_simulator_is_deterministic(self):
+        a = GBMSimulator(["AAPL", "MSFT", "ZZZZ"], rng=np.random.default_rng(42))
+        b = GBMSimulator(["AAPL", "MSFT", "ZZZZ"], rng=np.random.default_rng(42))
+        assert [a.step() for _ in range(50)] == [b.step() for _ in range(50)]
+
+    def test_different_seeds_differ(self):
+        a = GBMSimulator(["AAPL"], rng=np.random.default_rng(1))
+        b = GBMSimulator(["AAPL"], rng=np.random.default_rng(2))
+        assert [a.step() for _ in range(20)] != [b.step() for _ in range(20)]
+
+    def test_correlation_structure(self):
+        sim = GBMSimulator(
+            ["AAPL", "MSFT", "TSLA"], event_probability=0, rng=np.random.default_rng(1)
+        )
+        prev = {t: sim._prices[t] for t in sim.get_tickers()}
+        rets = {t: [] for t in prev}
+        for _ in range(20_000):
+            sim.step()
+            for t in prev:
+                rets[t].append(np.log(sim._prices[t] / prev[t]))
+                prev[t] = sim._prices[t]
+        c = np.corrcoef([rets["AAPL"], rets["MSFT"], rets["TSLA"]])
+        assert abs(c[0, 1] - 0.6) < 0.05
+        assert abs(c[0, 2] - 0.3) < 0.05
+
+    def test_events_always_move_at_probability_one(self):
+        sim = GBMSimulator(["AAPL"], event_probability=1.0, rng=np.random.default_rng(3))
+        p = sim._prices["AAPL"]
+        for _ in range(100):
+            sim.step()
+            q = sim._prices["AAPL"]
+            assert abs(q / p - 1) > 0.019
+            p = q
+
+    def test_no_events_at_probability_zero(self):
+        sim = GBMSimulator(["AAPL"], event_probability=0.0, rng=np.random.default_rng(3))
+        p = sim._prices["AAPL"]
+        for _ in range(1000):
+            sim.step()
+            q = sim._prices["AAPL"]
+            assert abs(q / p - 1) < 0.01  # pure diffusion: tiny moves only
+            p = q
+
+    def test_initial_prices_override_seed(self):
+        sim = GBMSimulator(["NVDA", "PYPL"], initial_prices={"NVDA": 900.0, "PYPL": 70.0})
+        assert sim.get_price("NVDA") == 900.0
+        assert sim.get_price("PYPL") == 70.0
+        assert sim.get_start_price("NVDA") == 900.0
+
+    def test_add_ticker_with_initial_price(self):
+        sim = GBMSimulator(["AAPL"])
+        sim.add_ticker("PYPL", initial_price=71.2)
+        assert sim.get_price("PYPL") == 71.2
+
+    def test_start_price_is_seed(self):
+        sim = GBMSimulator(["AAPL"])
+        sim.step()
+        assert sim.get_start_price("AAPL") == SEED_PRICES["AAPL"]
+        assert sim.get_start_price("NOPE") is None
+
+    def test_remove_clears_start_price(self):
+        sim = GBMSimulator(["AAPL", "MSFT"])
+        sim.remove_ticker("MSFT")
+        assert sim.get_start_price("MSFT") is None
+        assert sim.get_tickers() == ["AAPL"]
+
+    def test_dt_scales_volatility(self):
+        """A larger dt gives proportionally larger moves (dt is not hard-coded)."""
+        small = GBMSimulator(["AAPL"], dt=1e-8, event_probability=0, rng=np.random.default_rng(5))
+        large = GBMSimulator(["AAPL"], dt=1e-4, event_probability=0, rng=np.random.default_rng(5))
+        assert abs(small.step()["AAPL"] - 190) < abs(large.step()["AAPL"] - 190)
+
+    def test_params_are_copied_per_ticker(self):
+        sim = GBMSimulator(["ZZZZ"])
+        sim._params["ZZZZ"]["sigma"] = 9.9
+        assert DEFAULT_PARAMS["sigma"] == 0.25
+
+    def test_cholesky_failure_falls_back_to_independent(self, monkeypatch):
+        def boom(_):
+            raise np.linalg.LinAlgError("not PD")
+
+        monkeypatch.setattr(np.linalg, "cholesky", boom)
+        sim = GBMSimulator(["AAPL", "MSFT"])
+        assert sim._cholesky is None
+        assert set(sim.step()) == {"AAPL", "MSFT"}
