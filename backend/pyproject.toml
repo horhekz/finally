@@ -11,6 +11,9 @@ dependencies = [
     "massive>=2.2.0",
     "rich>=13.0.0",
     "tzdata>=2024.1",  # zoneinfo data on Windows / slim images,
+    "litellm>=1.105.0",
+    "python-dotenv>=1.2.1",
+    "pydantic>=2.12.5",
 ]
 
 [project.optional-dependencies]

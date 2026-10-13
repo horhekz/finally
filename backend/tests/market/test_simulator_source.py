@@ -118,12 +118,18 @@ class TestSimulatorDataSource:
         await source.start(["AAPL"])
 
         initial_version = cache.version
-        await asyncio.sleep(0.05)  # Should get ~5 updates
+        # Poll with a generous deadline: a fixed short sleep is flaky on loaded machines
+        # and on Windows (~15 ms timer granularity). The default 0.5 s interval would
+        # need ~1.5 s for 3 ticks, so 3 ticks well under that proves the custom interval.
+        loop = asyncio.get_running_loop()
+        start = loop.time()
+        while cache.version <= initial_version + 2 and loop.time() - start < 1.0:
+            await asyncio.sleep(0.01)
 
-        # Should have multiple updates with fast interval
-        assert cache.version > initial_version + 2
-
-        await source.stop()
+        try:
+            assert cache.version > initial_version + 2
+        finally:
+            await source.stop()
 
     async def test_custom_event_probability(self):
         """Test creating source with custom event probability."""

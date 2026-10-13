@@ -19,5 +19,9 @@
     "playwright@claude-plugins-official": true,
     "superdesign@anthropic-plugin-directory": true,
     "playwright@anthropic-plugin-directory": true
-  }
+  },
+  "env": {
+	  "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
+  },
+  "teammateMode":  "in-process"
 }

@@ -1,0 +1,34 @@
+# VCS / tooling
+.git
+.github
+.claude
+**/.DS_Store
+independent-reviewer
+planning
+test
+
+# Secrets and runtime data
+.env
+.env.*
+!.env.example
+db/
+**/*.db
+**/*.db-*
+
+# Frontend build artefacts
+**/node_modules
+frontend/.next
+frontend/out
+frontend/coverage
+
+# Python artefacts
+**/.venv
+**/__pycache__
+**/*.py[cod]
+**/.pytest_cache
+**/.ruff_cache
+**/.mypy_cache
+**/.coverage
+**/htmlcov
+backend/static
+backend/tests
