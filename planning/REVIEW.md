@@ -1,17 +1,15 @@
-# Code review
+# Code Review
 
-Compared `market-data-migration` with `origin/main` at `341bbac` (six commits, through `0104d60`). The checked out `main` branch does not contain this implementation; it has a separate local merge commit. Review was static; tests were not rerun.
+Reviewed commit `a71e1b6` (PR #4 merge) against its first parent. Review was static; tests were not run.
 
 ## Findings
 
-### [P2] Validate simulator event probability bounds
+### [P2] Validate simulator event probability
 
-`SIM_EVENT_PROBABILITY` is parsed as any floating-point value and passed directly to the simulator. Values above 1 make every ticker jump on every tick, while negative values silently disable events; `nan` is also accepted. This makes a syntactically valid but out-of-range environment setting change simulation behavior dramatically rather than falling back to the documented default. Reject non-finite values and values outside `[0, 1]` in `factory.py`.
+`SIM_EVENT_PROBABILITY` is parsed as an unrestricted float and passed to `GBMSimulator`. Values above `1` make every ticker trigger a 2–5% jump on every tick; negative values silently disable jumps, and `nan` is accepted and also disables them. This can make a valid-looking environment setting produce extreme or unexpected simulation behavior. Reject non-finite values and values outside `[0, 1]` in `factory.py`, falling back to the documented default.
 
-`backend/app/market/factory.py:40`
+`backend/app/market/factory.py:17` (`_env_float`) and `backend/app/market/factory.py:41` (use of `SIM_EVENT_PROBABILITY`)
 
-## Scope notes
+## Scope and validation
 
-- Reviewed the market data source, cache, ticker service, stream, simulator, Massive client, tests, and related configuration/docs changes.
-- The reported test and live-check results from the provided session transcript were not independently verified.
-- No other actionable defects were identified in the reviewed diff.
+Reviewed the market data source, Massive polling and EOD fallback, simulator, price cache and models, ticker validation, market data service, and SSE stream. No other actionable defects were identified in the reviewed diff. Tests were not run.
