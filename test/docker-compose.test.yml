@@ -1,0 +1,38 @@
+# E2E stack: the production image (mock LLM, deterministic simulator, fresh DB)
+# plus a Playwright runner. Run from the repo root:
+#   docker compose -f test/docker-compose.test.yml up --build --abort-on-container-exit --exit-code-from playwright
+services:
+  finally:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    environment:
+      LLM_MOCK: "true"
+      ENABLE_RESET: "true"
+      SIM_SEED: "42"
+      SIM_EVENT_PROBABILITY: "0"
+      MASSIVE_API_KEY: ""
+      POLYGON_API_KEY: ""
+      OPENROUTER_API_KEY: ""
+    # No volume: every run starts with a fresh DB.
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/api/health', timeout=3).status == 200 else 1)"]
+      interval: 3s
+      timeout: 5s
+      retries: 20
+      start_period: 5s
+
+  playwright:
+    image: mcr.microsoft.com/playwright:v1.64.0-noble
+    depends_on:
+      finally:
+        condition: service_healthy
+    working_dir: /work
+    environment:
+      BASE_URL: http://finally:8000
+      CI: "true"
+    volumes:
+      - ./:/work
+      - /work/node_modules
+    ipc: host
+    command: ["sh", "-c", "npm ci --no-audit --no-fund && npx playwright test"]

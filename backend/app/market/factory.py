@@ -23,17 +23,23 @@ def _env_float(name: str, default: float) -> float:
 
 
 def create_market_data_source(price_cache: PriceCache) -> MarketDataSource:
-    """MASSIVE_API_KEY non-empty → Massive; otherwise the GBM simulator. Returns it unstarted.
+    """Massive/Polygon key non-empty → Massive; otherwise the GBM simulator. Returns it unstarted.
+
+    The key is MASSIVE_API_KEY, or POLYGON_API_KEY as an alias (Massive is Polygon.io's
+    new name; the same key works). MASSIVE_API_KEY wins if both are set.
 
     Optional env vars (a bad value is logged and replaced by the default):
       MASSIVE_POLL_INTERVAL  live-mode poll seconds (default 15, minimum 1)
       SIM_EVENT_PROBABILITY  per-ticker, per-tick jump chance (default 0.001)
       SIM_SEED               integer → deterministic simulator
     """
-    api_key = os.environ.get("MASSIVE_API_KEY", "").strip()
+    api_key = (
+        os.environ.get("MASSIVE_API_KEY", "").strip()
+        or os.environ.get("POLYGON_API_KEY", "").strip()
+    )
     if api_key:
         interval = max(_env_float("MASSIVE_POLL_INTERVAL", 15.0), 1.0)
-        logger.info("Market data source: Massive API (poll every %.0fs)", interval)
+        logger.info("Market data source: Massive/Polygon API (poll every %.0fs)", interval)
         return MassiveDataSource(api_key=api_key, price_cache=price_cache, poll_interval=interval)
 
     seed_raw = os.environ.get("SIM_SEED", "").strip()

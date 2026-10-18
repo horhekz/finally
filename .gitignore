@@ -209,3 +209,25 @@ __marimo__/
 # Claude review hook runtime state
 .claude/hooks/.last-review-hash
 .claude/hooks/review.log
+
+# --- FinAlly ---------------------------------------------------------------
+# Runtime SQLite database (volume mount target; keep the directory)
+db/*.db*
+
+# Frontend
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/coverage/
+frontend/next-env.d.ts
+*.tsbuildinfo
+
+# Static export copied into the backend for local serving
+backend/static/
+
+# Playwright artifacts
+test/node_modules/
+test/test-results/
+test/playwright-report/
+test/blob-report/
+test/playwright/.cache/

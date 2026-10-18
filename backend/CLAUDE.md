@@ -51,13 +51,14 @@ from app.market import (
   - `tracked() -> set[str]`, `await stop()`
 
 - **`create_market_data_source(cache)`** — Factory, returns an unstarted source:
-  `MassiveDataSource` if `MASSIVE_API_KEY` is non-empty, otherwise `SimulatorDataSource`.
+  `MassiveDataSource` if `MASSIVE_API_KEY` (or its alias `POLYGON_API_KEY`) is non-empty, otherwise `SimulatorDataSource`.
 
 ### Environment variables
 
 | Var | Default | Effect |
 |---|---|---|
-| `MASSIVE_API_KEY` | empty | Non-empty → Massive (live snapshots; free key auto-falls back to end-of-day) |
+| `MASSIVE_API_KEY` | empty | Non-empty → Massive/Polygon (live snapshots; free key auto-falls back to end-of-day) |
+| `POLYGON_API_KEY` | empty | Alias for `MASSIVE_API_KEY`, used only if that is empty |
 | `MASSIVE_POLL_INTERVAL` | `15` | Live-mode poll seconds (min 1) |
 | `SIM_EVENT_PROBABILITY` | `0.001` | Simulator jump chance per ticker per tick |
 | `SIM_SEED` | unset | Integer → deterministic simulator |

@@ -1,0 +1,15 @@
+{
+  "name": "finally-e2e",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Playwright E2E tests for FinAlly",
+  "scripts": {
+    "test": "playwright test",
+    "report": "playwright show-report"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.64.0",
+    "@types/node": "^20.11.0",
+    "typescript": "^5.4.0"
+  }
+}

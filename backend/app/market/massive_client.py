@@ -74,6 +74,9 @@ class MassiveDataSource(MarketDataSource):
     """
 
     EOD_INTERVAL = 1800.0
+    # After a failed EOD fetch (e.g. a 429 at startup) retry soon instead of waiting
+    # 30 min with no prices. 60 s lets the free plan's 5-calls/minute window reset.
+    EOD_RETRY_INTERVAL = 60.0
 
     def __init__(self, api_key: str, price_cache: PriceCache, poll_interval: float = 15.0) -> None:
         self._api_key = api_key
@@ -87,6 +90,7 @@ class MassiveDataSource(MarketDataSource):
         # Last grouped-daily result, so add_ticker can price instantly in EOD mode
         self._eod_latest: dict[str, GroupedDailyAgg] = {}
         self._eod_previous: dict[str, GroupedDailyAgg] = {}
+        self._eod_ok = False  # last EOD fetch succeeded → wait the full EOD_INTERVAL
 
     @property
     def mode(self) -> str:
@@ -140,7 +144,9 @@ class MassiveDataSource(MarketDataSource):
     # --- Polling ---
 
     def _current_interval(self) -> float:
-        return self._interval if self._mode == "live" else self.EOD_INTERVAL
+        if self._mode == "live":
+            return self._interval
+        return self.EOD_INTERVAL if self._eod_ok else self.EOD_RETRY_INTERVAL
 
     async def _poll_loop(self) -> None:
         while True:
@@ -160,7 +166,7 @@ class MassiveDataSource(MarketDataSource):
             if self._mode == "live":
                 await self._poll_snapshots(tickers)
             else:
-                await self._poll_eod(tickers)
+                await self._safe_poll_eod(tickers)
         except BadResponse as e:
             if self._mode == "live" and "NOT_AUTHORIZED" in str(e):
                 logger.warning("Massive plan has no snapshot access; switching to end-of-day prices")
@@ -190,7 +196,9 @@ class MassiveDataSource(MarketDataSource):
         for i in range(0, len(tickers), SNAPSHOT_CHUNK):
             out.extend(
                 self._client.get_snapshot_all(
-                    market_type=SnapshotMarketType.STOCKS,
+                    # Pass the plain string: the SDK f-strings the enum into the URL
+                    # ("SnapshotMarketType.STOCKS") and gets locale "global" → 404.
+                    market_type=SnapshotMarketType.STOCKS.value,
                     tickers=tickers[i : i + SNAPSHOT_CHUNK],
                 )
             )
@@ -199,8 +207,13 @@ class MassiveDataSource(MarketDataSource):
     async def _safe_poll_eod(self, tickers: list[str]) -> None:
         try:
             await self._poll_eod(tickers)
+            self._eod_ok = bool(self._eod_latest)
         except Exception as e:
+            self._eod_ok = False
             logger.error("Massive end-of-day poll failed: %s", e)
+        if not self._eod_ok:
+            logger.warning("Massive end-of-day prices unavailable; retrying in %.0fs",
+                           self.EOD_RETRY_INTERVAL)
 
     async def _poll_eod(self, tickers: list[str]) -> None:
         self._eod_latest, self._eod_previous = await asyncio.to_thread(self._fetch_last_two_days)

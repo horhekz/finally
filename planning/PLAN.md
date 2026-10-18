@@ -127,6 +127,7 @@ OPENROUTER_API_KEY=your-openrouter-api-key-here
 # Optional: Massive (Polygon.io) API key for real market data
 # If not set, the built-in market simulator is used (recommended for most users)
 MASSIVE_API_KEY=
+# POLYGON_API_KEY=  (alias; used only if MASSIVE_API_KEY is empty)
 
 # Optional: Set to "true" for deterministic mock LLM responses (testing)
 LLM_MOCK=false
@@ -134,8 +135,8 @@ LLM_MOCK=false
 
 ### Behavior
 
-- If `MASSIVE_API_KEY` is set and non-empty → backend uses Massive REST API for market data
-- If `MASSIVE_API_KEY` is absent or empty → backend uses the built-in market simulator
+- If `MASSIVE_API_KEY` (or its alias `POLYGON_API_KEY`) is set and non-empty → backend uses the Massive (Polygon.io) REST API for market data
+- If both are absent or empty → backend uses the built-in market simulator
 - If `LLM_MOCK=true` → backend returns deterministic mock LLM responses (for E2E tests)
 - The backend reads `.env` from the project root (mounted into the container or read via docker `--env-file`)
 

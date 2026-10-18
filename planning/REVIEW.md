@@ -1,15 +1,27 @@
 # Code Review
 
-Reviewed commit `a71e1b6` (PR #4 merge) against its first parent. Review was static; tests were not run.
+Reviewed the working tree against `HEAD` (`6ef2dc6`) on 2026-10-13. Static review only; tests and Docker builds were not run.
 
 ## Findings
 
-### [P2] Validate simulator event probability
+### [P1] Include frontend library source in version control
 
-`SIM_EVENT_PROBABILITY` is parsed as an unrestricted float and passed to `GBMSimulator`. Values above `1` make every ticker trigger a 2–5% jump on every tick; negative values silently disable jumps, and `nan` is accepted and also disables them. This can make a valid-looking environment setting produce extreme or unexpected simulation behavior. Reject non-finite values and values outside `[0, 1]` in `factory.py`, falling back to the documented default.
+The top-level `.gitignore` pattern `lib/` matches directories named `lib` at any depth. It ignores `frontend/src/lib/`, which contains modules imported throughout the frontend (`api`, chart helpers, types, portfolio calculations, and treemap layout). Those files are present in this working tree but will be absent from a fresh checkout, so the frontend build fails. Anchor the Python packaging ignore pattern (for example, `/lib/`) or explicitly unignore `frontend/src/lib/` and its contents.
 
-`backend/app/market/factory.py:17` (`_env_float`) and `backend/app/market/factory.py:41` (use of `SIM_EVENT_PROBABILITY`)
+`.gitignore:17`; `frontend/src/lib/`
+
+### [P2] Reject non-finite trade inputs and computed values
+
+`apply_trade` only checks `quantity > 0` and `price > 0`; positive infinity passes both checks. Infinite values, or finite quantity and price whose product overflows, can be written into cash, positions, and the trade log. Reject non-finite quantity, price, and notional before updating account state.
+
+`backend/app/db/repository.py:125-149`
+
+### [P2] Return failure when startup health checks time out
+
+Both startup scripts end their 30-second health-check loops by printing that FinAlly is running, even if no health check succeeded. A failed startup or port conflict therefore returns success and may open a broken page. Track success and exit nonzero with a useful diagnostic when the deadline expires.
+
+`scripts/start_mac.sh:58-69`; `scripts/start_windows.ps1:57-69`
 
 ## Scope and validation
 
-Reviewed the market data source, Massive polling and EOD fallback, simulator, price cache and models, ticker validation, market data service, and SSE stream. No other actionable defects were identified in the reviewed diff. Tests were not run.
+Reviewed the new API, database, LLM and service code, frontend, deployment files, tests, and project configuration. No other actionable findings were identified. Tests and Docker builds were not run.
