@@ -1,6 +1,6 @@
 # Market Data Backend — Detailed Design
 
-The implementation reference for FinAlly's market data layer: one unified Python API, backed by either the **GBM simulator** (default) or the **Massive REST API** (when `MASSIVE_API_KEY` is set). Each section has the complete code for one module, so an agent can implement it, or check the existing code against it, by working through this document from top to bottom.
+The implementation reference for FinAlly's market data layer: one unified Python API, backed by either the **GBM simulator** (default) or the **Massive REST API** (when `MASSIVE_API_KEY`, or its alias `POLYGON_API_KEY`, is set). Each section has the complete code for one module, so an agent can implement it, or check the existing code against it, by working through this document from top to bottom.
 
 | | |
 |---|---|
@@ -64,7 +64,7 @@ The implementation reference for FinAlly's market data layer: one unified Python
 
 ```
                  ┌──────────── create_market_data_source(cache) ────────────┐
-                 │  MASSIVE_API_KEY non-empty?                               │
+                 │  MASSIVE_API_KEY (or POLYGON_API_KEY) non-empty?          │
                  │    yes → MassiveDataSource  (REST poll; live 15 s / EOD)  │
                  │    no  → SimulatorDataSource (GBM, 500 ms)                │
                  └──────────────────────────┬────────────────────────────────┘
@@ -798,7 +798,7 @@ The API research is in `MASSIVE_API.md`. This section turns it into a data sourc
 
 | Purpose | SDK call | REST | Plans |
 |---|---|---|---|
-| Live prices, many tickers, **one call** | `client.get_snapshot_all(SnapshotMarketType.STOCKS, tickers=[...])` | `GET /v2/snapshot/locale/us/markets/stocks/tickers?tickers=AAPL,MSFT` | Starter+ (15-min delayed); Advanced+ (real-time) |
+| Live prices, many tickers, **one call** | `client.get_snapshot_all("stocks", tickers=[...])` (pass the string, not the enum, see §9.4) | `GET /v2/snapshot/locale/us/markets/stocks/tickers?tickers=AAPL,MSFT` | Starter+ (15-min delayed); Advanced+ (real-time) |
 | End-of-day close for **all** tickers, one call | `client.get_grouped_daily_aggs(date="2026-10-07", adjusted=True)` | `GET /v2/aggs/grouped/locale/us/market/stocks/2026-10-07?adjusted=true` | All plans, including free |
 
 ### 9.2 Two modes, auto-detected
@@ -897,6 +897,9 @@ class MassiveDataSource(MarketDataSource):
     """
 
     EOD_INTERVAL = 1800.0
+    # After a failed EOD fetch (e.g. a 429 at startup) retry soon instead of waiting
+    # 30 min with no prices. 60 s lets the free plan's 5-calls/minute window reset.
+    EOD_RETRY_INTERVAL = 60.0
 
     def __init__(self, api_key: str, price_cache: PriceCache, poll_interval: float = 15.0) -> None:
         self._api_key = api_key
@@ -910,6 +913,7 @@ class MassiveDataSource(MarketDataSource):
         # Last grouped-daily result, so add_ticker can price instantly in EOD mode
         self._eod_latest: dict[str, GroupedDailyAgg] = {}
         self._eod_previous: dict[str, GroupedDailyAgg] = {}
+        self._eod_ok = False  # last EOD fetch succeeded → wait the full EOD_INTERVAL
 
     @property
     def mode(self) -> str:
@@ -963,7 +967,9 @@ class MassiveDataSource(MarketDataSource):
     # --- Polling ---
 
     def _current_interval(self) -> float:
-        return self._interval if self._mode == "live" else self.EOD_INTERVAL
+        if self._mode == "live":
+            return self._interval
+        return self.EOD_INTERVAL if self._eod_ok else self.EOD_RETRY_INTERVAL
 
     async def _poll_loop(self) -> None:
         while True:
@@ -983,7 +989,7 @@ class MassiveDataSource(MarketDataSource):
             if self._mode == "live":
                 await self._poll_snapshots(tickers)
             else:
-                await self._poll_eod(tickers)
+                await self._safe_poll_eod(tickers)
         except BadResponse as e:
             if self._mode == "live" and "NOT_AUTHORIZED" in str(e):
                 logger.warning("Massive plan has no snapshot access; switching to end-of-day prices")
@@ -1013,7 +1019,9 @@ class MassiveDataSource(MarketDataSource):
         for i in range(0, len(tickers), SNAPSHOT_CHUNK):
             out.extend(
                 self._client.get_snapshot_all(
-                    market_type=SnapshotMarketType.STOCKS,
+                    # Pass the plain string: the SDK f-strings the enum into the URL
+                    # ("SnapshotMarketType.STOCKS") and gets locale "global" → 404.
+                    market_type=SnapshotMarketType.STOCKS.value,
                     tickers=tickers[i : i + SNAPSHOT_CHUNK],
                 )
             )
@@ -1022,8 +1030,13 @@ class MassiveDataSource(MarketDataSource):
     async def _safe_poll_eod(self, tickers: list[str]) -> None:
         try:
             await self._poll_eod(tickers)
+            self._eod_ok = bool(self._eod_latest)
         except Exception as e:
+            self._eod_ok = False
             logger.error("Massive end-of-day poll failed: %s", e)
+        if not self._eod_ok:
+            logger.warning("Massive end-of-day prices unavailable; retrying in %.0fs",
+                           self.EOD_RETRY_INTERVAL)
 
     async def _poll_eod(self, tickers: list[str]) -> None:
         self._eod_latest, self._eod_previous = await asyncio.to_thread(self._fetch_last_two_days)
@@ -1066,7 +1079,9 @@ class MassiveDataSource(MarketDataSource):
 - **The worker thread gets a copy** of the ticker list. Results for a ticker removed while a poll was in flight are dropped (`snap.ticker not in self._tickers`), so a removal can't be undone by a late poll.
 - **`add_ticker` in live mode sets `_wake`**, so the loop polls immediately instead of up to 15 s later. Paid plans have no per-minute cap, so the extra call is free. This lets `ensure_price()` (§11) succeed within its 3 s timeout on a paid plan.
 - **`add_ticker` in EOD mode** prices straight from the grouped-daily data already in memory. That data covers the whole market, so there's no need to wait 30 min.
+- **Pass `market_type="stocks"`, not the enum.** `massive` 2.2.0 builds the snapshot URL with an f-string, so `SnapshotMarketType.STOCKS` becomes `/v2/snapshot/locale/global/markets/SnapshotMarketType.STOCKS/tickers`. That returns a 404 instead of the 403 the EOD fallback checks for, so a free key would never get any prices.
 - **Free-tier budget (5 req/min).** At startup: 1 snapshot call (403), then 2–4 grouped-daily calls (weekends are skipped without a request, and a holiday costs one extra). After that, 2–4 calls every 30 min. If the limit is ever hit, the SDK retries 429 responses with backoff.
+- **Failed EOD fetches retry after `EOD_RETRY_INTERVAL` (60 s)**, not 30 min. A 429 at startup (or an empty result) would otherwise leave the app unpriced for half an hour.
 
 ### 9.5 Error handling
 
@@ -1075,10 +1090,10 @@ class MassiveDataSource(MarketDataSource):
 | 403 `NOT_AUTHORIZED` in live mode | Switch to `eod` and poll grouped daily straight away |
 | 401 invalid key, other `BadResponse` | Logged at ERROR. The last prices stay cached. Retried next interval. |
 | 429 / 5xx | The SDK retries internally with backoff. If it still fails, it's handled as above. |
-| Network error / timeout | Logged. Retried next interval. |
+| Network error / timeout | Logged. Retried next interval (60 s in EOD mode until a fetch succeeds). |
 | Unknown symbol | Missing from the response, so it never gets a cache entry and the UI shows "—" |
 | Weekend / holiday / before the data is published (EOD) | Empty results; walk back one day (up to 7) |
-| `MASSIVE_API_KEY` set but blank | The factory treats it as unset and uses the simulator. The SDK's `AuthError` can't happen. |
+| `MASSIVE_API_KEY` set but blank | The factory treats it as unset and tries `POLYGON_API_KEY`; if that is blank too, it uses the simulator. The SDK's `AuthError` can't happen. |
 
 ---
 
@@ -1111,11 +1126,18 @@ def _env_float(name: str, default: float) -> float:
 
 
 def create_market_data_source(price_cache: PriceCache) -> MarketDataSource:
-    """MASSIVE_API_KEY non-empty → Massive; otherwise the GBM simulator. Returns it unstarted."""
-    api_key = os.environ.get("MASSIVE_API_KEY", "").strip()
+    """Massive/Polygon key non-empty → Massive; otherwise the GBM simulator. Returns it unstarted.
+
+    The key is MASSIVE_API_KEY, or POLYGON_API_KEY as an alias (Massive is Polygon.io's
+    new name; the same key works). MASSIVE_API_KEY wins if both are set.
+    """
+    api_key = (
+        os.environ.get("MASSIVE_API_KEY", "").strip()
+        or os.environ.get("POLYGON_API_KEY", "").strip()
+    )
     if api_key:
         interval = max(_env_float("MASSIVE_POLL_INTERVAL", 15.0), 1.0)
-        logger.info("Market data source: Massive API (poll every %.0fs)", interval)
+        logger.info("Market data source: Massive/Polygon API (poll every %.0fs)", interval)
         return MassiveDataSource(api_key=api_key, price_cache=price_cache, poll_interval=interval)
 
     seed_raw = os.environ.get("SIM_SEED", "").strip()
@@ -1131,6 +1153,7 @@ def create_market_data_source(price_cache: PriceCache) -> MarketDataSource:
 | Env var | Default | Effect |
 |---|---|---|
 | `MASSIVE_API_KEY` | empty | Non-empty (after strip) → Massive. Otherwise → simulator. |
+| `POLYGON_API_KEY` | empty | Alias for `MASSIVE_API_KEY`, used only if that is empty. |
 | `MASSIVE_POLL_INTERVAL` | `15` | Live-mode poll seconds (minimum 1). Use 15 on Starter, 2–5 on unlimited plans. |
 | `SIM_EVENT_PROBABILITY` | `0.001` | Per-ticker, per-tick chance of a jump. Use `0.0002` for calmer prices. |
 | `SIM_SEED` | unset | An integer makes the simulator deterministic (E2E tests, demos). |
