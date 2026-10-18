@@ -101,6 +101,24 @@ class TestFactory:
             source = create_market_data_source(PriceCache())
         assert source._api_key == "key"
 
+    def test_polygon_api_key_alias(self):
+        with patch.dict(os.environ, {"POLYGON_API_KEY": " poly-key "}, clear=True):
+            source = create_market_data_source(PriceCache())
+        assert isinstance(source, MassiveDataSource)
+        assert source._api_key == "poly-key"
+
+    def test_massive_api_key_wins_over_polygon(self):
+        env = {"MASSIVE_API_KEY": "massive-key", "POLYGON_API_KEY": "poly-key"}
+        with patch.dict(os.environ, env, clear=True):
+            source = create_market_data_source(PriceCache())
+        assert source._api_key == "massive-key"
+
+    def test_blank_massive_key_falls_through_to_polygon(self):
+        env = {"MASSIVE_API_KEY": "  ", "POLYGON_API_KEY": "poly-key"}
+        with patch.dict(os.environ, env, clear=True):
+            source = create_market_data_source(PriceCache())
+        assert source._api_key == "poly-key"
+
     def test_sim_event_probability_from_env(self):
         with patch.dict(os.environ, {"SIM_EVENT_PROBABILITY": "0.0002"}, clear=True):
             source = create_market_data_source(PriceCache())

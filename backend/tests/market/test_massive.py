@@ -226,6 +226,33 @@ async def test_eod_error_after_403_does_not_raise():
     assert "AAPL" not in cache
 
 
+async def test_eod_failure_retries_soon_then_recovers():
+    client = MagicMock()
+    client.get_snapshot_all.side_effect = BadResponse(NOT_AUTHORIZED)
+    client.get_grouped_daily_aggs.side_effect = ConnectionError("too many 429 error responses")
+    src, cache = make_source(["AAPL"], client)
+    await src._poll_once()
+    assert src._current_interval() == MassiveDataSource.EOD_RETRY_INTERVAL
+
+    client.get_grouped_daily_aggs.side_effect = None
+    client.get_grouped_daily_aggs.return_value = [
+        GroupedDailyAgg.from_dict({"T": "AAPL", "o": 230, "c": 231.4})
+    ]
+    await src._poll_once()  # the retry stays in EOD mode, no snapshot call
+    assert client.get_snapshot_all.call_count == 1
+    assert cache.get_price("AAPL") == 231.4
+    assert src._current_interval() == MassiveDataSource.EOD_INTERVAL
+
+
+async def test_eod_empty_result_retries_soon():
+    client = MagicMock()
+    client.get_snapshot_all.side_effect = BadResponse(NOT_AUTHORIZED)
+    client.get_grouped_daily_aggs.return_value = []
+    src, _ = make_source(["AAPL"], client)
+    await src._poll_once()
+    assert src._current_interval() == MassiveDataSource.EOD_RETRY_INTERVAL
+
+
 async def test_eod_add_ticker_prices_from_memory():
     src, cache = make_source(["AAPL"], MagicMock())
     src._mode = "eod"

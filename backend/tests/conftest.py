@@ -16,6 +16,7 @@ def app_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setenv("DB_PATH", str(db_path))
     monkeypatch.setenv("STATIC_DIR", str(tmp_path / "no-static"))
     monkeypatch.setenv("MASSIVE_API_KEY", "")
+    monkeypatch.setenv("POLYGON_API_KEY", "")
     monkeypatch.setenv("SIM_SEED", "42")
     monkeypatch.setenv("SIM_EVENT_PROBABILITY", "0")
     monkeypatch.setenv("LLM_MOCK", "true")

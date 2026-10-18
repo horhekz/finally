@@ -39,7 +39,8 @@ uv run pytest -v
 
 ## Environment Variables
 
-- `MASSIVE_API_KEY` - Optional. If set, use real market data from Massive API. If not set, use the built-in simulator.
+- `MASSIVE_API_KEY` - Optional. If set, use real market data from the Massive (formerly Polygon.io) API. If not set, use the built-in simulator.
+- `POLYGON_API_KEY` - Optional alias for `MASSIVE_API_KEY` (used only if that is empty).
 
 ## Development
 

@@ -210,6 +210,7 @@ def create_market_data_source(price_cache: PriceCache) -> MarketDataSource:
 | Env var | Default | Effect |
 |---|---|---|
 | `MASSIVE_API_KEY` | empty | Non-empty → Massive. Empty or unset → simulator. |
+| `POLYGON_API_KEY` | empty | Alias for `MASSIVE_API_KEY`, used only if that is empty. |
 | `MASSIVE_POLL_INTERVAL` 🔧 | `15` | Seconds between snapshot polls. Use 2–5 on paid unlimited plans. |
 
 ---

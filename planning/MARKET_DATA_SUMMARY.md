@@ -73,6 +73,7 @@ data: {"AAPL": {"ticker": "AAPL", "price": 190.02, "previous_price": 190.02, "ti
 | Var | Default | Effect |
 |---|---|---|
 | `MASSIVE_API_KEY` | empty | Non-empty → Massive. Otherwise the simulator. |
+| `POLYGON_API_KEY` | empty | Alias for `MASSIVE_API_KEY`, used only if that is empty. |
 | `MASSIVE_POLL_INTERVAL` | `15` | Live-mode poll seconds (min 1) |
 | `SIM_EVENT_PROBABILITY` | `0.001` | Jump chance per ticker per tick; `0.0002` is calmer |
 | `SIM_SEED` | unset | Integer → reproducible simulator path |

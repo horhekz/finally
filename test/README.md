@@ -35,7 +35,7 @@ Start the backend with the env above (and the built frontend in `backend/static`
 
 ```bash
 cd backend
-LLM_MOCK=true ENABLE_RESET=true SIM_SEED=42 SIM_EVENT_PROBABILITY=0 MASSIVE_API_KEY= \
+LLM_MOCK=true ENABLE_RESET=true SIM_SEED=42 SIM_EVENT_PROBABILITY=0 MASSIVE_API_KEY= POLYGON_API_KEY= \
   uv run uvicorn app.main:app --port 8000
 ```
 

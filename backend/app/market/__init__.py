@@ -5,7 +5,7 @@ Public API:
     PriceCache                - Thread-safe in-memory latest-price store
     MarketDataSource          - Abstract interface for data providers
     MarketDataService         - Owns the tracked set (watchlist ∪ held positions)
-    create_market_data_source - Factory: Massive if MASSIVE_API_KEY is set, else simulator
+    create_market_data_source - Factory: Massive if MASSIVE_API_KEY (or POLYGON_API_KEY) is set, else simulator
     create_stream_router      - FastAPI router for GET /api/stream/prices (SSE)
     normalize_ticker          - Strip/uppercase/validate a symbol (InvalidTickerError)
     DEFAULT_TICKERS           - The ten default watchlist symbols

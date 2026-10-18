@@ -81,7 +81,8 @@ cd frontend && npm run build && cp -r out ../backend/static
 |---|---|---|
 | `OPENROUTER_API_KEY` | — | OpenRouter key for AI chat. The app starts without it; chat replies with a friendly error |
 | `LLM_MOCK` | `false` | `true` → deterministic mock LLM responses (tests, no key needed) |
-| `MASSIVE_API_KEY` | empty | Massive (Polygon.io) key for real market data; empty → built-in simulator |
+| `MASSIVE_API_KEY` | empty | Polygon.io (now Massive) key for real market data; empty → built-in simulator |
+| `POLYGON_API_KEY` | empty | Alias for `MASSIVE_API_KEY` (used only if that is empty) |
 | `MASSIVE_POLL_INTERVAL` | `15` | Massive poll interval in seconds |
 | `SIM_EVENT_PROBABILITY` | `0.001` | Simulator per-tick chance of a 2–5% jump |
 | `SIM_SEED` | empty | Integer seed for a reproducible simulator path |

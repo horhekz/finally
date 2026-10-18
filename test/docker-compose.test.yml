@@ -12,6 +12,7 @@ services:
       SIM_SEED: "42"
       SIM_EVENT_PROBABILITY: "0"
       MASSIVE_API_KEY: ""
+      POLYGON_API_KEY: ""
       OPENROUTER_API_KEY: ""
     # No volume: every run starts with a fresh DB.
     healthcheck:

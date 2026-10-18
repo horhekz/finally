@@ -30,7 +30,7 @@ Only edit files you own. Need a change elsewhere? Message the owner.
 | `OPENROUTER_API_KEY` | — | app still starts without it; chat returns a friendly message |
 | `LLM_MOCK` | `false` | `true` → deterministic responses (§6) |
 | `ENABLE_RESET` | `false` | `true` → `POST /api/reset` exists (E2E only) |
-| `MASSIVE_API_KEY`, `MASSIVE_POLL_INTERVAL`, `SIM_EVENT_PROBABILITY`, `SIM_SEED` | see `.env.example` | market data |
+| `MASSIVE_API_KEY` (alias `POLYGON_API_KEY`), `MASSIVE_POLL_INTERVAL`, `SIM_EVENT_PROBABILITY`, `SIM_SEED` | see `.env.example` | market data |
 
 Local dev: the backend loads the root `.env` with `python-dotenv` (`override=False`). Docker uses `--env-file .env`.
 
