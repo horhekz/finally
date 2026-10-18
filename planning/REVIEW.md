@@ -1,27 +1,19 @@
 # Code Review
 
-Reviewed the working tree against `HEAD` (`6ef2dc6`) on 2026-10-13. Static review only; tests and Docker builds were not run.
+Reviewed commit `e7298d3` against parent `0adcc2f` on 2026-10-18. Static review only; tests and builds were not run.
 
 ## Findings
 
-### [P1] Include frontend library source in version control
+### [P2] Update the market-data implementation reference for the Polygon key alias
 
-The top-level `.gitignore` pattern `lib/` matches directories named `lib` at any depth. It ignores `frontend/src/lib/`, which contains modules imported throughout the frontend (`api`, chart helpers, types, portfolio calculations, and treemap layout). Those files are present in this working tree but will be absent from a fresh checkout, so the frontend build fails. Anchor the Python packaging ignore pattern (for example, `/lib/`) or explicitly unignore `frontend/src/lib/` and its contents.
+The factory now accepts `POLYGON_API_KEY` when `MASSIVE_API_KEY` is blank, and gives `MASSIVE_API_KEY` precedence when both are set. `planning/MARKET_DATA_DESIGN.md` still says the factory checks only `MASSIVE_API_KEY` in its overview, decision flow, copied factory implementation, and environment table. Following that reference would lead readers to expect the simulator when only `POLYGON_API_KEY` is configured, despite the new factory behavior.
 
-`.gitignore:17`; `frontend/src/lib/`
+`planning/MARKET_DATA_DESIGN.md:3,67,1114-1115,1133`
 
-### [P2] Reject non-finite trade inputs and computed values
+## Reviewed behavior
 
-`apply_trade` only checks `quantity > 0` and `price > 0`; positive infinity passes both checks. Infinite values, or finite quantity and price whose product overflows, can be written into cash, positions, and the trade log. Reject non-finite quantity, price, and notional before updating account state.
-
-`backend/app/db/repository.py:125-149`
-
-### [P2] Return failure when startup health checks time out
-
-Both startup scripts end their 30-second health-check loops by printing that FinAlly is running, even if no health check succeeded. A failed startup or port conflict therefore returns success and may open a broken page. Track success and exit nonzero with a useful diagnostic when the deadline expires.
-
-`scripts/start_mac.sh:58-69`; `scripts/start_windows.ps1:57-69`
+The factory trims both variables and correctly falls back from a blank Massive key to the Polygon alias. Snapshot polling now passes the SDK enum value (`"stocks"`). EOD polling retries after 60 seconds when a fetch raises or returns no grouped data, then waits 30 minutes after a successful nonempty fetch. No additional actionable issues were found in the changed implementation.
 
 ## Scope and validation
 
-Reviewed the new API, database, LLM and service code, frontend, deployment files, tests, and project configuration. No other actionable findings were identified. Tests and Docker builds were not run.
+Reviewed the commit diff, including source selection, snapshot requests, EOD retry handling, tests, and related documentation. Tests and builds were not run.
